@@ -7,13 +7,13 @@ title: "Statistical Computing Homework 4, Chapter 3"
 author: "Ziqi Yang"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
-  pdf_document:
-    toc: yes
   html_document:
     fig_height: 6
     fig_width: 9
     number_sections: yes
     theme: united
+    toc: yes
+  pdf_document:
     toc: yes
 ---
 
@@ -136,25 +136,76 @@ contour(k, r, z)
 
 ## Gauss-Newton method
 ```{r}
+library(rootSolve)
+
+#gradient(growth, c(1000, 0.11))
+
+para <- c(500, 0.2);  temp <- c(0, 0); iter <- 0; epsilon <- 1e-5
+
+while( iter <= 10000  &  (sum(para-temp)^2)^0.5 > epsilon ) {
+  temp <- para
+  grad <- gradient(growth, para)
+  para <- para + solve( (t(grad)%*%grad)+diag(0.0001, 2) )%*%t(grad)%*%(beet$beetles-growth(para))
+  if(any(para == Inf)) {break}
+  iter <- iter + 1
+  # print(para)
+}
+
+print(para)
+#/(sum(temp^2))^0.5 
 
 ```
 
-## Multivariate method based on log-normal model MLE
+**Above is my own Gauss-Newton method, which use the formula to calculate the optimal parameters, but this depends on the inital values of parameters, so it's not very effect compared with default "nls" function in R**  
 
-**(a) Use self method: Steepest Descent(Gradient Descent)**  
 ```{r}
-
-
+nls.R <- nls(beetles ~ growth.contour(k,r), data = beet, start = list(k = 100, r = 0.5))
+summary(nls.R)
 ```
 
+**The default method for nlw uses Gauss-Newton, we can see that the result is pretty robust compare with my own Gauss-Newton method**  
 
-**(b) Validate using R function optim: use L-BFGS-B method**  
+**Finally, use self method: Steepest Descent(Gradient Descent)**  
+
 ```{r}
 growth.error.optim <- function(x) {
   sum( (beet$beetles - growth(x))^2 )
 }
-optim(c(1, 1), growth.error.optim, lower=c(0,0), upper=c(Inf, 1), method = "L-BFGS-B")
+
+iter_num <- 2000
+para <- matrix(0, nrow = iter_num, ncol=2, byrow = T)
+para[1, ] <- c(100, 0.8); para[2, ] <- para[1,]-0.000001*gradient(growth.error.optim, para[1, ])
+iter <- 2
+epsilon <- 1e-10
+
+while( iter <= iter_num  &  (sum(para[iter, ]-para[iter-1, ])^2)^0.5 > epsilon ) {
+  
+  grad.now <- gradient(growth.error.optim, para[iter,])
+  grad.old <- gradient(growth.error.optim, para[iter-1,])
+  cat("This is Hessian: ", hessian(growth.error.optim, para[iter,]), "\n")
+  l <- (para[iter, ]-para[iter-1,]) %*% t(grad.now-grad.old)/sum((grad.now-grad.old)^2)
+  cat("This is l: ", l, "\n")
+  para[iter+1, ] <- para[iter, ] - l %*% grad.now
+
+  if(any(para[iter, ] == Inf)) {break}
+  iter <- iter + 1
+  cat("This current parameter: ", para[iter, ], "\n")
+}
+print(para[iter, ])
 ```
+
+**The final gradient descent estimate for $K,r$ are `r print(para[iter, ])`. My own Gradient Descent worked not very well, due to nearly singularity of Hessian matrix.**  
+
+## Multivariate method based on log-normal model MLE: use BFGS
+```{r}
+m_log.mle.function <- function(x) {
+  -sum( dnorm(log(beet$beetles), mean = log(growth(x[1:2])), sd = x[3], log = TRUE) )
+}
+optim(c(1000, 0.1, 1), m_log.mle.function, lower=c(0,0,0), upper=c(Inf, 1, Inf), method = "L-BFGS-B")$par
+
+```
+
+**Above result is MLE for $(K, r, \sigma^2)$. But actually this MLE method depends heavily on the initial value, I tried several, but could not get to the close result with Gauss-Newton one. **  
 
 
 
