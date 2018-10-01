@@ -108,7 +108,7 @@ legend("topleft",legend=c("Log-likelihood","MLE by Newton-Raphson"),
 ```{r}
 beet <- data.frame(
     days    = c(0,  8,  28,  41,  63,  69,   97, 117,  135,  154),
-    beetles = c(2, 47, 192, 256, 768, 896, 1120, 896, 1184, 1024))
+    beetles = c(2, 47, 192, 256, 768, 896, 1120, 896, 1184, 1024)/1000)   # Rescale the data to make gradient descent better and also Gauss-Newton method better
 
 growth <- function(x) {
   k <- x[1]; r <- x[2]
@@ -118,6 +118,7 @@ growth <- function(x) {
 growth.contour <- function(k,r) {
   k*beet$beetles[1]/(beet$beetles[1] + (k-beet$beetles[1])*exp(-r*beet$days))
 }
+
 growth.error <- function(k, r) {
   sum( (beet$beetles - growth.contour(k, r))^2 )
 }
@@ -126,8 +127,8 @@ growth.error <- function(k, r) {
 **Plot the contour plot to visually check:**  
 
 ```{r, echo=FALSE}
-k <- seq(0,1500,length.out = 1e4)
-r <- seq(0,1,length.out = 100)
+k <- seq(0,2,length.out = 2e3)
+r <- seq(0,1,length.out = 1e3)
 z <- outer(k, r, FUN = Vectorize(growth.error))
 contour(k, r, z)
 ```
@@ -140,9 +141,9 @@ library(rootSolve)
 
 #gradient(growth, c(1000, 0.11))
 
-para <- c(500, 0.2);  temp <- c(0, 0); iter <- 0; epsilon <- 1e-5
+para <- c(2, 0.9);  temp <- c(0, 0); iter <- 0; epsilon <- 1e-5
 
-while( iter <= 10000  &  (sum(para-temp)^2)^0.5 > epsilon ) {
+while( iter <= 1000  &  (sum(para-temp)^2)^0.5 > epsilon ) {
   temp <- para
   grad <- gradient(growth, para)
   para <- para + solve( (t(grad)%*%grad)+diag(0.0001, 2) )%*%t(grad)%*%(beet$beetles-growth(para))
@@ -168,30 +169,45 @@ summary(nls.R)
 **Finally, use self method: Steepest Descent(Gradient Descent)**  
 
 ```{r}
+library(rootSolve)
 growth.error.optim <- function(x) {
-  sum( (beet$beetles - growth(x))^2 )
+  sum( (beet$beetles - growth(x))^2 )  # can add log barrier here
 }
 
 iter_num <- 2000
-para <- matrix(0, nrow = iter_num, ncol=2, byrow = T)
-para[1, ] <- c(100, 0.8); para[2, ] <- para[1,]-0.000001*gradient(growth.error.optim, para[1, ])
+para <- matrix(0, nrow = iter_num, ncol=2)
+para[1, ] <- c(1.2, 0.14)              # Play with this initial value 
+para[2, ] <- para[1,]-0.00001*gradient(growth.error.optim, para[1, ])#Play with this number 0.001
 iter <- 2
-epsilon <- 1e-10
 
-while( iter <= iter_num  &  (sum(para[iter, ]-para[iter-1, ])^2)^0.5 > epsilon ) {
+epsilon <- 1e-6
+
+while( iter <= iter_num-1  &  ( sum( (para[iter, ]-para[iter-1, ])^2 ) )^0.5 > epsilon ) {
   
   grad.now <- gradient(growth.error.optim, para[iter,])
   grad.old <- gradient(growth.error.optim, para[iter-1,])
-  cat("This is Hessian: ", hessian(growth.error.optim, para[iter,]), "\n")
-  l <- (para[iter, ]-para[iter-1,]) %*% t(grad.now-grad.old)/sum((grad.now-grad.old)^2)
-  cat("This is l: ", l, "\n")
+  cat("Gradient: ", grad.now, "\n")
+  cat("Hessian: ", hessian(growth.error.optim, para[iter,]), "\n")
+  
+  l <- 1e-2*(para[iter, ]-para[iter-1,]) %*% t(grad.now-grad.old)/sum((grad.now-grad.old)^2)
+  # play with the step size
+  
+  cat("l: ", l, "\n")
+  
   para[iter+1, ] <- para[iter, ] - l %*% grad.now
-
+  cat("Error function value: ", growth.error.optim(para[iter+1, ]), "\n")
+  
   if(any(para[iter, ] == Inf)) {break}
   iter <- iter + 1
-  cat("This current parameter: ", para[iter, ], "\n")
+  cat("current parameter: ", para[iter, ], "\n \n")
+  
 }
 print(para[iter, ])
+```
+
+
+```{r}
+optim(c(50, 0.6), growth.error.optim, lower= c(0,0), upper = c(Inf, 100)  )
 ```
 
 **The final gradient descent estimate for $K,r$ are `r print(para[iter, ])`. My own Gradient Descent worked not very well, due to nearly singularity of Hessian matrix.**  
